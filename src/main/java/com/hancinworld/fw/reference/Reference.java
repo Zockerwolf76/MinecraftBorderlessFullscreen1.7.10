@@ -28,7 +28,7 @@ public class Reference {
     public static final String MOD_NAME = "Fullscreen Windowed";
     public static final String CLIENT_PROXY_CLASS = "com.hancinworld.fw.proxy.ClientProxy";
     public static final String SERVER_PROXY_CLASS = "com.hancinworld.fw.proxy.ServerProxy";
-    public static final String VERSION = "1.3.1-gtnh";
+    public static final String VERSION = "1.3.2-gtnh";
     public static final String GUI_FACTORY_CLASS = "com.hancinworld.fw.client.gui.GuiFactory";
     public static final String MC_VERSIONS = "[1.7.10]";
     public static final int AUTOMATIC_MONITOR_SELECTION = 0;

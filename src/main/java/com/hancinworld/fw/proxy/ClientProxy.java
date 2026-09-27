@@ -27,6 +27,7 @@ import com.hancinworld.fw.handler.DrawScreenEventHandler;
 import com.hancinworld.fw.handler.KeyInputEventHandler;
 import com.hancinworld.fw.reference.Reference;
 import com.hancinworld.fw.utility.LogHelper;
+import com.hancinworld.fw.utility.SdlWindowHelper;
 import net.minecraftforge.common.MinecraftForge;
 import cpw.mods.fml.client.SplashProgress;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -41,7 +42,6 @@ import org.lwjgl.opengl.DisplayMode;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.io.File;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public class ClientProxy extends CommonProxy {
@@ -67,9 +67,7 @@ public class ClientProxy extends CommonProxy {
     {
         Minecraft mc = Minecraft.getMinecraft();
         _startupRequestedSetting = mc.gameSettings.fullScreen;
-        //With lwjgl3ify the vanilla fullscreen toggle is already borderless, so we must not touch the setting.
-        if(!isLwjgl3ifyPresent())
-            mc.gameSettings.fullScreen = false;
+        mc.gameSettings.fullScreen = false;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -77,10 +75,8 @@ public class ClientProxy extends CommonProxy {
     // ------------------------------------------------------------------------------------------------------------
 
     /**
-     * GTNH 2.6+ can run on Java 17+ through lwjgl3ify, which replaces LWJGL2 with an SDL3 based implementation.
-     * The LWJGL2 "org.lwjgl.opengl.Window.undecorated" trick this mod relies on does not exist there, but SDL3's
-     * fullscreen already is a borderless desktop-sized window (with correct HiDPI handling). In that case we simply
-     * step aside and let the vanilla F11 toggle do its job.
+     * GTNH can run on Java 17+ through lwjgl3ify, which replaces LWJGL2 with SDL3. The LWJGL2 "undecorated" trick
+     * does not exist there, so the borderless window is built through SDL directly (see SdlWindowHelper).
      */
     public static boolean isLwjgl3ifyPresent()
     {
@@ -97,29 +93,11 @@ public class ClientProxy extends CommonProxy {
         return _lwjgl3ifyPresent;
     }
 
-    /** Best effort: tell lwjgl3ify to use borderless instead of exclusive fullscreen (runtime only, not saved). */
-    private static void setLwjgl3ifyBorderless(boolean value)
-    {
-        try {
-            Class<?> config = Class.forName("me.eigenraven.lwjgl3ify.core.Config", true, ClientProxy.class.getClassLoader());
-            Field f = config.getField("WINDOW_BORDERLESS_REPLACES_FULLSCREEN");
-            f.setBoolean(null, value);
-            LogHelper.info("lwjgl3ify detected - borderless fullscreen " + (value ? "enabled" : "disabled") + " through lwjgl3ify.");
-        } catch (Throwable t) {
-            LogHelper.info("lwjgl3ify detected - using its built-in fullscreen handling (" + t + ")");
-        }
-    }
-
     // ------------------------------------------------------------------------------------------------------------
 
     @Override
     public void registerKeyBindings()
     {
-        if(isLwjgl3ifyPresent()) {
-            setLwjgl3ifyBorderless(ConfigurationHandler.instance().isFullscreenWindowedEnabled());
-            return;
-        }
-
         /* FIXME: Overrides the minecraft hotkey for fullscreen, as there are no hooks */
         if(fullscreenKeyBinding == null && ConfigurationHandler.instance().isFullscreenWindowedEnabled())
         {
@@ -347,12 +325,9 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void toggleFullScreen(boolean goFullScreen, int desiredMonitor) {
 
-        //lwjgl3ify: vanilla fullscreen is already borderless, just use it.
+        //lwjgl3ify (Java 17+): build the borderless window through SDL.
         if(isLwjgl3ifyPresent()) {
-            Minecraft mc = Minecraft.getMinecraft();
-            if(mc.isFullScreen() != goFullScreen)
-                mc.toggleFullscreen();
-            currentState = goFullScreen;
+            toggleFullScreenSdl(goFullScreen, desiredMonitor);
             return;
         }
 
@@ -407,7 +382,12 @@ public class ClientProxy extends CommonProxy {
         }
 
         currentState = goFullScreen;
+        afterToggle(goFullScreen);
+    }
 
+    /** Things that have to happen after every switch, in both LWJGL2 and lwjgl3ify mode. */
+    private void afterToggle(boolean goFullScreen)
+    {
         //Vanilla sets Minecraft.fullscreen = true when it started in exclusive fullscreen. While that flag is set it
         //ignores window resizes, so the framebuffer would stay at the old resolution. We are never in exclusive mode.
         try {
@@ -428,14 +408,110 @@ public class ClientProxy extends CommonProxy {
         }
     }
 
+    // ------------------------------------------------------------------------------------------------------------
+    // lwjgl3ify / SDL3 implementation
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static boolean isWindows()
+    {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    private Rectangle getSdlTargetBounds(long window, int desiredMonitor) throws Exception
+    {
+        Rectangle screen = null;
+        if(desiredMonitor > 0)
+            screen = SdlWindowHelper.getDisplayBoundsByIndex(desiredMonitor);
+        if(screen == null)
+            screen = SdlWindowHelper.getCurrentDisplayBounds(window);
+        if(screen == null)
+            throw new IllegalStateException("SDL returned no monitor bounds");
+
+        ConfigurationHandler configuration = ConfigurationHandler.instance();
+        if(configuration.areAdvancedFeaturesEnabled() && configuration.isCustomFullscreenDimensions() && (configuration.getCustomFullscreenDimensionsH() > 256 && configuration.getCustomFullscreenDimensionsW() > 256))
+        {
+            Rectangle custom = new Rectangle(configuration.getCustomFullscreenDimensionsX(), configuration.getCustomFullscreenDimensionsY(), configuration.getCustomFullscreenDimensionsW(), configuration.getCustomFullscreenDimensionsH());
+            if(desiredMonitor > 0)
+                custom.setLocation(screen.x + custom.x, screen.y + custom.y);
+            return custom;
+        }
+
+        Rectangle target = new Rectangle(screen);
+        //Windows treats a window that exactly covers the monitor like exclusive fullscreen (black flicker on alt-tab,
+        //nothing can be drawn on top). One extra pixel of height avoids that - it's invisible, below the screen edge.
+        if(isWindows())
+            target.height += 1;
+        return target;
+    }
+
+    private void toggleFullScreenSdl(final boolean goFullScreen, final int desiredMonitor)
+    {
+        final boolean wasRealFullscreen = Display.isFullscreen();
+        if(wasRealFullscreen) {
+            currentState = true;
+            LogHelper.info("Game is in SDL fullscreen, switching to borderless window.");
+        }
+
+        if(currentState == goFullScreen && !wasRealFullscreen)
+            return;
+
+        final boolean wasBorderless = currentState && !wasRealFullscreen;
+
+        try {
+            //Leave SDL's own (exclusive-like) fullscreen first.
+            if(wasRealFullscreen)
+                Display.setFullscreen(false);
+        } catch (Throwable t) {
+            LogHelper.warn("Could not leave SDL fullscreen: " + t);
+        }
+
+        final boolean[] ok = { true };
+        SdlWindowHelper.runOnMainThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    long window = SdlWindowHelper.getWindow();
+
+                    if(goFullScreen) {
+                        if(!wasRealFullscreen && !wasBorderless)
+                            _savedWindowedBounds = SdlWindowHelper.getWindowBounds(window);
+
+                        Rectangle target = getSdlTargetBounds(window, desiredMonitor);
+                        SdlWindowHelper.setBordered(window, false);
+                        SdlWindowHelper.setResizable(window, false);
+                        SdlWindowHelper.setBounds(window, target);
+                        LogHelper.info("Borderless window: " + target.width + "x" + target.height + " at " + target.x + "," + target.y);
+                    } else {
+                        Rectangle screen = SdlWindowHelper.getCurrentDisplayBounds(window);
+                        Rectangle restore = _savedWindowedBounds;
+                        if(restore == null || restore.width <= 0 || restore.height <= 0)
+                            restore = defaultWindowedBounds(screen != null ? screen : new Rectangle(0, 0, 1920, 1080));
+
+                        SdlWindowHelper.setBordered(window, true);
+                        SdlWindowHelper.setResizable(window, true);
+                        SdlWindowHelper.setBounds(window, restore);
+                    }
+                    SdlWindowHelper.sync(window);
+                } catch (Throwable t) {
+                    ok[0] = false;
+                    LogHelper.warn("Borderless window through SDL failed: " + t);
+                    t.printStackTrace();
+                }
+            }
+        });
+
+        if(!ok[0])
+            return;
+
+        currentState = goFullScreen;
+        //Minecraft picks up the new window size by itself (Display.wasResized) once its fullscreen flag is off.
+        afterToggle(goFullScreen);
+    }
+
     @Override
     @SuppressWarnings("deprecated")
     public void performStartupChecks()
     {
-        //lwjgl3ify handles everything itself.
-        if(isLwjgl3ifyPresent())
-            return;
-
         //If the mod is disabled by configuration, just put back the initial value.
         if(!ConfigurationHandler.instance().isFullscreenWindowedEnabled()) {
             Minecraft.getMinecraft().gameSettings.fullScreen = _startupRequestedSetting;

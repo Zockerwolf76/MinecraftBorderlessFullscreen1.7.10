@@ -10,7 +10,7 @@ Replaces the exclusive fullscreen (F11) with a borderless window covering the wh
 - Proper switch out of exclusive fullscreen at startup (the framebuffer no longer stays at the old resolution)
 - The chosen mode is saved and restored on the next start
 - Multi-monitor: picks the monitor with the largest overlap when the window is partly off-screen
-- GTNH on Java 17+ (lwjgl3ify): uses lwjgl3ify's own borderless fullscreen, F11 works as usual
+- GTNH on Java 17+ (lwjgl3ify): real borderless window built through SDL3 (instead of SDL fullscreen, which Windows treats like exclusive fullscreen)
 - Build system updated (anatawa12 ForgeGradle 1.2 fork, Gradle 7.4.2) + GitHub Actions
 
 ## Build
