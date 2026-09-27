@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "fw",
+    "name": "Fullscreen Windowed",
+    "description": "Borderless fullscreen for Minecraft 1.7.10 / GregTech: New Horizons (4K & HiDPI fix)",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "https://github.com/hancin/Fullscreen-Windowed-Minecraft",
+    "updateUrl": "",
+    "authorList": ["Hancin", "zockerwolf76"],
+    "credits": "To all the documentation out there, Thank You.",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
