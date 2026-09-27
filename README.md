@@ -20,7 +20,5 @@ gradlew build
 ```
 The jar will be in `build/libs/`.
 
-Or let GitHub build it: every push starts a build under *Actions*; a tag like `v1.3.1` automatically creates a release with the jar attached.
-
 ## License
 BSD 2-Clause, see [LICENSE](LICENSE) – original © 2015 David Larochelle-Pratte (Hancin).
