@@ -19,7 +19,7 @@ apply plugin: 'forge'
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
-version = "1.7.10-1.3.4-gtnh"
+version = "1.7.10-1.1"
 group = "com.hancinworld.fw" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
 archivesBaseName = "FullscreenWindowed"
 
