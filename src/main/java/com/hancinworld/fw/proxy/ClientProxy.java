@@ -466,6 +466,7 @@ public class ClientProxy extends CommonProxy {
         }
 
         final boolean[] ok = { true };
+        final int[][] pixelSize = { null };
         SdlWindowHelper.runOnMainThread(new Runnable() {
             @Override
             public void run() {
@@ -473,13 +474,38 @@ public class ClientProxy extends CommonProxy {
                     long window = SdlWindowHelper.getWindow();
 
                     if(goFullScreen) {
-                        if(!wasRealFullscreen && !wasBorderless)
+                        //A maximized window must be un-maximized first. Windows ignores size/position changes on a
+                        //maximized window and keeps it at the work area (screen minus taskbar) - Minecraft would then
+                        //render for the full screen height into a smaller window and the top gets cut off.
+                        boolean maximized = SdlWindowHelper.isMaximized(window);
+                        if(maximized) {
+                            SdlWindowHelper.restore(window);
+                            SdlWindowHelper.sync(window);
+                        }
+
+                        if(!wasRealFullscreen && !wasBorderless) {
+                            //Remember the NORMAL (un-maximized) size and whether it was maximized.
+                            ConfigurationHandler.instance().setWindowMaximized(maximized);
                             _savedWindowedBounds = SdlWindowHelper.getWindowBounds(window);
+                        }
 
                         Rectangle target = getSdlTargetBounds(window, desiredMonitor);
                         SdlWindowHelper.setBordered(window, false);
                         SdlWindowHelper.setResizable(window, false);
                         SdlWindowHelper.setBounds(window, target);
+                        SdlWindowHelper.sync(window);
+
+                        //Verify - if Windows still treats it as maximized or moved it, force it once more.
+                        Rectangle actual = SdlWindowHelper.getWindowBounds(window);
+                        if(SdlWindowHelper.isMaximized(window) || !actual.equals(target)) {
+                            LogHelper.info("Window is at " + actual + " instead of " + target + ", fixing.");
+                            if(SdlWindowHelper.isMaximized(window)) {
+                                SdlWindowHelper.restore(window);
+                                SdlWindowHelper.sync(window);
+                            }
+                            SdlWindowHelper.setBounds(window, target);
+                            SdlWindowHelper.sync(window);
+                        }
                         LogHelper.info("Borderless window: " + target.width + "x" + target.height + " at " + target.x + "," + target.y);
                     } else {
                         Rectangle screen = SdlWindowHelper.getCurrentDisplayBounds(window);
@@ -490,8 +516,15 @@ public class ClientProxy extends CommonProxy {
                         SdlWindowHelper.setBordered(window, true);
                         SdlWindowHelper.setResizable(window, true);
                         SdlWindowHelper.setBounds(window, restore);
+
+                        //Go back to maximized if the window was maximized before (remembered across restarts).
+                        if(ConfigurationHandler.instance().isWindowMaximized()) {
+                            SdlWindowHelper.sync(window);
+                            SdlWindowHelper.maximize(window);
+                        }
                     }
                     SdlWindowHelper.sync(window);
+                    pixelSize[0] = SdlWindowHelper.getWindowSizeInPixels(window);
                 } catch (Throwable t) {
                     ok[0] = false;
                     LogHelper.warn("Borderless window through SDL failed: " + t);
@@ -504,8 +537,12 @@ public class ClientProxy extends CommonProxy {
             return;
 
         currentState = goFullScreen;
-        //Minecraft picks up the new window size by itself (Display.wasResized) once its fullscreen flag is off.
         afterToggle(goFullScreen);
+
+        //Make Minecraft's framebuffer match the real window size right away, instead of waiting for a resize event
+        //(otherwise the picture can be too tall for the window and the top is cut off).
+        if(pixelSize[0] != null && pixelSize[0][0] > 0 && pixelSize[0][1] > 0)
+            callMinecraftResizeMethod(pixelSize[0][0], pixelSize[0][1]);
     }
 
     @Override

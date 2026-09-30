@@ -83,6 +83,17 @@ public final class SdlWindowHelper {
         return new Rectangle(x, y, a.get(0), b.get(0));
     }
 
+    /** Drawable size in real pixels (what Minecraft's framebuffer must match). */
+    public static int[] getWindowSizeInPixels(long window) {
+        try {
+            IntBuffer a = intBuf(), b = intBuf();
+            video("SDL_GetWindowSizeInPixels", new Class<?>[]{long.class, IntBuffer.class, IntBuffer.class}, window, a, b);
+            return new int[]{a.get(0), b.get(0)};
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     public static void setBordered(long window, boolean bordered) throws Exception {
         video("SDL_SetWindowBordered", new Class<?>[]{long.class, boolean.class}, window, bordered);
     }
@@ -94,6 +105,32 @@ public final class SdlWindowHelper {
     public static void setBounds(long window, Rectangle r) throws Exception {
         video("SDL_SetWindowSize", new Class<?>[]{long.class, int.class, int.class}, window, Math.max(1, r.width), Math.max(1, r.height));
         video("SDL_SetWindowPosition", new Class<?>[]{long.class, int.class, int.class}, window, r.x, r.y);
+    }
+
+    private static long maximizedFlag() {
+        try {
+            return ((Number) cls(SDL_VIDEO).getField("SDL_WINDOW_MAXIMIZED").get(null)).longValue();
+        } catch (Throwable t) {
+            return 0x80L; //SDL3 value
+        }
+    }
+
+    public static boolean isMaximized(long window) {
+        try {
+            long flags = ((Number) video("SDL_GetWindowFlags", new Class<?>[]{long.class}, window)).longValue();
+            return (flags & maximizedFlag()) != 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    public static void maximize(long window) throws Exception {
+        video("SDL_MaximizeWindow", new Class<?>[]{long.class}, window);
+    }
+
+    /** Un-maximizes the window (back to its normal size). */
+    public static void restore(long window) throws Exception {
+        video("SDL_RestoreWindow", new Class<?>[]{long.class}, window);
     }
 
     public static void sync(long window) {

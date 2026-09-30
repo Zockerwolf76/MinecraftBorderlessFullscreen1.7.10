@@ -11,3 +11,4 @@ comment.fullscreenwindowed.customFullscreenDimensionsY=Y coordinate where to put
 comment.fullscreenwindowed.customFullscreenDimensionsW=Width of the window when fullscreen. Must be greater than 256 to take effect. customFullscreenDimensions must be true for this to have any effect.
 comment.fullscreenwindowed.customFullscreenDimensionsH=Height of the window when fullscreen. Must be greater than 256 to take effect. customFullscreenDimensions must be true for this to have any effect.
 comment.fullscreenwindowed.onlyRemoveDecorations=If set to true, hitting the fullscreen button will only remove the title bar and not resize the window.
+comment.fullscreenwindowed.windowMaximized=Set automatically: whether the window was maximized before switching to fullscreen. When leaving fullscreen the window is maximized again if this is true (also used when the game was started directly in fullscreen).
